@@ -1,0 +1,122 @@
+[
+  {
+    "incident_description": "A production PostgreSQL service exhausted its connection pool after a deployment left connections open, causing request timeouts and database connection errors.",
+    "root_cause": "Application connections were not returned to the pool on an exception path.",
+    "fix_applied": "Closed connections in a finally block, added pool exhaustion metrics, and restarted affected workers.",
+    "service_type": "database"
+  },
+  {
+    "incident_description": "A MySQL-backed API became unavailable when a traffic increase consumed every available database connection and new requests stalled.",
+    "root_cause": "The connection pool limit was lower than the service concurrency and queries held connections too long.",
+    "fix_applied": "Reduced query duration, corrected pool sizing, and added connection wait alerts.",
+    "service_type": "database"
+  },
+  {
+    "incident_description": "A Redis cache outage caused elevated latency because clients retried failed connections aggressively and exhausted application worker threads.",
+    "root_cause": "Unbounded retry behavior amplified a short Redis availability failure.",
+    "fix_applied": "Added exponential backoff with jitter, bounded retries, and a circuit breaker.",
+    "service_type": "database"
+  },
+  {
+    "incident_description": "A service returned database timeout errors after a schema migration introduced a table lock during peak traffic.",
+    "root_cause": "A blocking migration ran without an online migration strategy.",
+    "fix_applied": "Rolled back the migration, used an online alter procedure, and scheduled schema changes away from peak traffic.",
+    "service_type": "database"
+  },
+  {
+    "incident_description": "A Java web service gradually consumed all heap memory and was eventually killed by the container runtime.",
+    "root_cause": "An in-memory request cache had no eviction policy and retained objects indefinitely.",
+    "fix_applied": "Added bounded cache eviction, heap dashboards, and a load test covering cache growth.",
+    "service_type": "memory"
+  },
+  {
+    "incident_description": "A Python worker fleet experienced increasing memory usage after processing large files and eventually restarted repeatedly.",
+    "root_cause": "Buffered file contents were retained by a task-level collection after each job completed.",
+    "fix_applied": "Streamed files instead of buffering them and cleared task references after processing.",
+    "service_type": "memory"
+  },
+  {
+    "incident_description": "A Node.js API hit out-of-memory errors while handling a large batch export endpoint.",
+    "root_cause": "The endpoint built the complete export in memory rather than streaming rows to the client.",
+    "fix_applied": "Changed the response to a streaming pipeline and enforced export size limits.",
+    "service_type": "memory"
+  },
+  {
+    "incident_description": "A containerized service began restarting after a release because memory usage exceeded its Kubernetes limit.",
+    "root_cause": "The container limit was copied from a smaller environment and did not match production workload needs.",
+    "fix_applied": "Adjusted resource requests and limits, then added memory utilization alerts.",
+    "service_type": "memory"
+  },
+  {
+    "incident_description": "A deployment passed CI but production pods failed readiness checks immediately after rollout.",
+    "root_cause": "A required environment variable was renamed in the application but not in the deployment manifest.",
+    "fix_applied": "Updated the manifest, validated required settings at startup, and added deployment configuration tests.",
+    "service_type": "deployment"
+  },
+  {
+    "incident_description": "A web application served a blank page after deployment because the frontend assets were published under the wrong base path.",
+    "root_cause": "The production build base URL differed from the path configured by the reverse proxy.",
+    "fix_applied": "Aligned the Vite base configuration with the deployment path and added a smoke test for static assets.",
+    "service_type": "deployment"
+  },
+  {
+    "incident_description": "A Kubernetes rollout left old and new versions serving inconsistent behavior during a production release.",
+    "root_cause": "The readiness probe reported healthy before the new application had loaded its dependencies.",
+    "fix_applied": "Implemented a dependency-aware readiness check and paused rollout until it passed.",
+    "service_type": "deployment"
+  },
+  {
+    "incident_description": "A production release failed because a configuration file was omitted from the container image even though local tests passed.",
+    "root_cause": "The build context excluded the file through an overly broad ignore pattern.",
+    "fix_applied": "Corrected the build context, added image-content checks, and rebuilt the release.",
+    "service_type": "deployment"
+  },
+  {
+    "incident_description": "An API started returning HTTP 429 responses during a traffic burst from many application workers.",
+    "root_cause": "Each worker maintained an independent request counter instead of sharing rate-limit state.",
+    "fix_applied": "Centralized rate limiting in Redis and added client-side backoff.",
+    "service_type": "rate_limit"
+  },
+  {
+    "incident_description": "A scheduled data synchronization job was throttled by a vendor API and accumulated a growing backlog.",
+    "root_cause": "The job ignored the vendor's rate-limit headers and retried immediately after failures.",
+    "fix_applied": "Honored retry-after responses, added token-bucket throttling, and reduced concurrency.",
+    "service_type": "rate_limit"
+  },
+  {
+    "incident_description": "A public API integration began failing with rate-limit errors after a feature increased duplicate requests.",
+    "root_cause": "The application did not cache identical lookup requests and made one remote call per frontend component.",
+    "fix_applied": "Added request coalescing and a short-lived cache for identical lookups.",
+    "service_type": "rate_limit"
+  },
+  {
+    "incident_description": "A payment workflow returned errors because a third-party provider changed its response format.",
+    "root_cause": "The integration assumed a field was always a string and did not validate provider responses.",
+    "fix_applied": "Added schema validation, tolerant parsing, and contract tests against provider fixtures.",
+    "service_type": "third_party_api"
+  },
+  {
+    "incident_description": "An email notification service timed out when its external provider experienced elevated latency.",
+    "root_cause": "Outbound requests had no timeout and occupied worker threads while waiting indefinitely.",
+    "fix_applied": "Set explicit connect and read timeouts, moved notifications to a queue, and added fallback handling.",
+    "service_type": "third_party_api"
+  },
+  {
+    "incident_description": "An application received HTTP 401 responses from an external API immediately after credential rotation.",
+    "root_cause": "One production deployment still used the previous secret because its secret reference was not refreshed.",
+    "fix_applied": "Restarted the stale workers, corrected secret rollout automation, and added credential health checks.",
+    "service_type": "third_party_api"
+  },
+  {
+    "incident_description": "A shipping integration produced duplicate orders after a network timeout caused the client to retry a successful request.",
+    "root_cause": "The remote operation was not protected by an idempotency key.",
+    "fix_applied": "Added idempotency keys, persisted request state, and reconciled duplicate records.",
+    "service_type": "third_party_api"
+  },
+  {
+    "incident_description": "A search service returned intermittent 503 responses after a deploy changed the endpoint hostname.",
+    "root_cause": "The new hostname was not resolvable from the production network due to missing private DNS configuration.",
+    "fix_applied": "Corrected DNS configuration, added startup connectivity checks, and documented the network dependency.",
+    "service_type": "third_party_api"
+  }
+]
