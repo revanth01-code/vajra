@@ -1,27 +1,36 @@
-from pathlib import Path
+from __future__ import annotations
 
-import chromadb
-
-from src.config.env import SERVER_ROOT, settings
+from src.services.embedding_service import fit_corpus, find_similar
 
 
-def _persist_path() -> str:
-    path = Path(settings.chroma_persist_path)
-    if not path.is_absolute():
-        path = SERVER_ROOT / path
-    path.mkdir(parents=True, exist_ok=True)
-    return str(path)
+_incidents: list[dict] = []
 
 
-client = chromadb.PersistentClient(path=_persist_path())
+def get_incident_store() -> list[dict]:
+    return _incidents
 
 
-def get_chroma_collection():
-    return client.get_or_create_collection(
-        name="past_incidents",
-        metadata={"hnsw:space": "cosine"},
-    )
+def add_incidents(incidents: list[dict]) -> None:
+    global _incidents
+    _incidents = incidents
+    texts = [
+        f"{inc['incident_description']} {inc['root_cause']} {inc['service_type']}"
+        for inc in incidents
+    ]
+    fit_corpus(texts)
+
+
+def search_incidents(
+    query: str,
+    top_k: int = 3,
+    threshold: float = 0.1,
+) -> list[dict]:
+    results = find_similar(query, top_k=top_k, threshold=threshold)
+    return [
+        {**_incidents[idx], "similarity": score}
+        for idx, score in results
+    ]
 
 
 def get_chroma_document_count() -> int:
-    return get_chroma_collection().count()
+    return len(_incidents)

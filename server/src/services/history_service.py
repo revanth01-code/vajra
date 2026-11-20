@@ -2,63 +2,30 @@ from datetime import datetime
 import json
 from typing import Any
 
-from chromadb.errors import ChromaError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.config.chroma import get_chroma_collection
+from src.config.chroma import search_incidents
 from src.config.db import engine
 from src.models.investigation import Investigation
-from src.services.embedding_service import embed_text
 
 
-SIMILARITY_THRESHOLD = 0.6
+SIMILARITY_THRESHOLD = 0.1
 
 
 class HistoryServiceError(RuntimeError):
     """Raised when the historical incident lookup cannot be completed."""
 
 
-def _distance_to_similarity(distance: float, collection: Any) -> float:
-    space = (collection.metadata or {}).get("hnsw:space", "l2")
-    if space == "cosine":
-        return 1 - distance
-    return 1 - (distance / 2)
-
-
 def retrieve_similar_incidents(error_message: str) -> list[dict[str, Any]]:
     try:
-        collection = get_chroma_collection()
-        if collection.count() == 0:
-            return []
-
-        result = collection.query(
-            query_embeddings=[embed_text(error_message)],
-            n_results=3,
-            include=["documents", "metadatas", "distances"],
+        return search_incidents(
+            error_message,
+            top_k=3,
+            threshold=SIMILARITY_THRESHOLD,
         )
-    except (ChromaError, OSError, RuntimeError) as error:
+    except (OSError, RuntimeError, ValueError) as error:
         raise HistoryServiceError("Historical incident search is unavailable.") from error
-
-    documents = result.get("documents", [[]])[0]
-    metadatas = result.get("metadatas", [[]])[0]
-    distances = result.get("distances", [[]])[0]
-    incidents: list[dict[str, Any]] = []
-
-    for document, metadata, distance in zip(documents, metadatas, distances):
-        similarity = _distance_to_similarity(float(distance), collection)
-        if similarity < SIMILARITY_THRESHOLD:
-            continue
-        incidents.append(
-            {
-                "incident_description": document,
-                "root_cause": metadata.get("root_cause", ""),
-                "fix_applied": metadata.get("fix_applied", ""),
-                "service_type": metadata.get("service_type", ""),
-                "similarity": round(similarity, 4),
-            }
-        )
-    return incidents
 
 
 def list_investigations(limit: int = 20) -> list[Investigation]:

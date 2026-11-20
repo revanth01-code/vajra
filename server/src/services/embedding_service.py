@@ -1,24 +1,38 @@
-from functools import lru_cache
-from typing import Sequence
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 
-MODEL_NAME = "all-MiniLM-L6-v2"
+_vectorizer = TfidfVectorizer(
+    max_features=1000,
+    stop_words="english",
+    ngram_range=(1, 2),
+)
+_corpus: list[str] = []
+_matrix = None
 
 
-@lru_cache(maxsize=1)
-def _get_model():
-    from sentence_transformers import SentenceTransformer
+def fit_corpus(texts: list[str]) -> None:
+    global _matrix, _corpus
+    _corpus = texts
+    if texts:
+        _matrix = _vectorizer.fit_transform(texts)
 
-    return SentenceTransformer(MODEL_NAME)
+
+def embed_query(text: str):
+    if _matrix is None or not _corpus:
+        return None
+    return _vectorizer.transform([text])
 
 
-def embed_texts(texts: Sequence[str]) -> list[list[float]]:
-    if not texts:
+def find_similar(query_text: str, top_k: int = 3, threshold: float = 0.1):
+    query_vec = embed_query(query_text)
+    if query_vec is None:
         return []
-    embeddings = _get_model().encode(list(texts), normalize_embeddings=True)
-    return embeddings.tolist()
-
-
-def embed_text(text: str) -> list[float]:
-    embeddings = embed_texts([text])
-    return embeddings[0]
+    scores = cosine_similarity(query_vec, _matrix).flatten()
+    top_indices = np.argsort(scores)[::-1][:top_k]
+    results = []
+    for idx in top_indices:
+        if scores[idx] >= threshold:
+            results.append((int(idx), float(scores[idx])))
+    return results
