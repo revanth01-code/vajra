@@ -1011,6 +1011,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 .report-body { font-family: monospace; font-size: 13px; color: var(--text); white-space: pre-wrap; line-height: 1.7; }
 
 .past-section { margin-top: 24px; }
+.past-history-error { color: var(--text-muted); font-size: 12px; }
 .past-toggle { background: none; border: none; color: var(--text-muted); font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 0; }
 .past-toggle:hover { color: var(--text); }
 .chevron { transition: transform 0.2s; display: inline-block; }

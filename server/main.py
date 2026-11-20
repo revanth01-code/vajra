@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from scripts.seed_incidents import seed_incidents
 
 from src.config.chroma import get_chroma_collection
 from src.config.db import initialize_database
@@ -30,3 +31,4 @@ app.include_router(feedback_router, prefix="/api")
 def initialize_resources() -> None:
     initialize_database()
     get_chroma_collection()
+    seed_incidents()

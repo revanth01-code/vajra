@@ -16,7 +16,7 @@ export default function Navbar({ onNewInvestigation, repoUrl }) {
         </button>
         <a
           className="nav-btn"
-          href="https://github.com/your-username/incidentsense"
+          href="https://github.com/revanth01-code/vajra"
           target="_blank"
           rel="noreferrer"
         >

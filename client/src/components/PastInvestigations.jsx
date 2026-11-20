@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -6,16 +6,34 @@ export default function PastInvestigations({ onReload }) {
   const [open, setOpen] = useState(false);
   const [sessions, setSessions] = useState([]);
   const [error, setError] = useState("");
+  const [hasLoaded, setHasLoaded] = useState(false);
 
-  useEffect(() => {
+  const loadHistory = useCallback(() => {
+    console.log(`Fetching history from ${apiUrl}/api/history`);
+    setError("");
     fetch(`${apiUrl}/api/history`)
       .then((response) => {
         if (!response.ok) throw new Error("Could not load past investigations.");
         return response.json();
       })
-      .then(setSessions)
-      .catch((requestError) => setError(requestError.message));
+      .then((items) => {
+        setSessions(items);
+        setHasLoaded(true);
+      })
+      .catch(() => setError("Could not load history"));
   }, []);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  function togglePanel() {
+    setOpen((current) => {
+      const next = !current;
+      if (next && !hasLoaded) loadHistory();
+      return next;
+    });
+  }
 
   async function reload(sessionId) {
     try {
@@ -29,18 +47,18 @@ export default function PastInvestigations({ onReload }) {
   }
 
   return (
-    <section className="past-investigations">
+    <section id="past-investigations" className="past-investigations">
       <button
         type="button"
         className={`collapse-button ${open ? "open" : ""}`}
-        onClick={() => setOpen((current) => !current)}
+        onClick={togglePanel}
         aria-expanded={open}
       >
         Past Investigations {open ? "▲" : "▼"}
       </button>
       {open && (
         <div>
-          {error && <p role="alert">{error}</p>}
+          {error && <p className="past-history-error" role="alert">{error}</p>}
           {sessions.length === 0 && !error && <p>No investigations yet.</p>}
           {sessions.map((session) => (
             <article key={session.id} className="past-session">

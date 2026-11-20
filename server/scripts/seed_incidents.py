@@ -15,14 +15,14 @@ DATA_PATH = SERVER_ROOT / "data" / "seed_incidents.json"
 
 def seed_incidents() -> int:
     collection = get_chroma_collection()
-    if collection.count() > 0:
+    if collection.count() >= 20:
         return collection.count()
 
     incidents = json.loads(DATA_PATH.read_text(encoding="utf-8"))
     embeddings = embed_texts(
         [incident["incident_description"] for incident in incidents]
     )
-    collection.add(
+    collection.upsert(
         ids=[f"seed-{index + 1:03d}" for index in range(len(incidents))],
         documents=[incident["incident_description"] for incident in incidents],
         embeddings=embeddings,
