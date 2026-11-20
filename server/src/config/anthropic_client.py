@@ -1,9 +1,14 @@
-import anthropic
+import os
+from groq import Groq
 
-from src.config.env import settings
+_client: Groq | None = None
 
 
-def get_anthropic_client() -> anthropic.Anthropic | None:
-    if settings.anthropic_api_key is None:
-        return None
-    return anthropic.Anthropic(api_key=settings.anthropic_api_key)
+def get_client() -> Groq:
+    global _client
+    if _client is None:
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError("GROQ_API_KEY environment variable is not set")
+        _client = Groq(api_key=api_key)
+    return _client

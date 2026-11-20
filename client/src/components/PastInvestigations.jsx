@@ -32,7 +32,7 @@ export default function PastInvestigations({ onReload }) {
     <section className="past-investigations">
       <button
         type="button"
-        className="collapse-button"
+        className={`collapse-button ${open ? "open" : ""}`}
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
       >

@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import InputView from "./components/InputView.jsx";
 import ResultsView from "./components/ResultsView.jsx";
+import Navbar from "./components/Navbar.jsx";
 import useSSE from "./hooks/useSSE.js";
 
 export default function App() {
@@ -23,17 +24,20 @@ export default function App() {
     setView("results");
   }
 
-  if (view === "input") {
-    return <InputView onInvestigate={startInvestigation} />;
-  }
-
   return (
-    <ResultsView
-      timelineEvents={timelineEvents}
-      finalResult={finalResult}
-      streamError={streamError}
-      onNewInvestigation={newInvestigation}
-      onReload={reloadInvestigation}
-    />
+    <>
+      <Navbar onNewInvestigation={newInvestigation} />
+      {view === "input" ? (
+        <InputView onInvestigate={startInvestigation} />
+      ) : (
+        <ResultsView
+          timelineEvents={timelineEvents}
+          finalResult={finalResult}
+          streamError={streamError}
+          onNewInvestigation={newInvestigation}
+          onReload={reloadInvestigation}
+        />
+      )}
+    </>
   );
 }

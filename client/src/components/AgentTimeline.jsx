@@ -1,41 +1,118 @@
-const timelineSteps = [
-  { node: "error_parser", label: "Parsing error" },
-  { node: "history_retriever", label: "Searching past incidents" },
-  { node: "change_correlator", label: "Checking recent changes" },
-  { node: "hypothesis_agent", label: "Generating hypotheses" },
-  { node: "report_writer", label: "Writing report" },
+const STEP_DEFINITIONS = [
+  {
+    key: "error_parser",
+    label: "Parsing error",
+    subtitle: "Extracting service, error type, and file paths",
+  },
+  {
+    key: "history_retriever",
+    label: "Searching past incidents",
+    subtitle: "Finding similar cases in the knowledge base",
+  },
+  {
+    key: "change_correlator",
+    label: "Checking recent changes",
+    subtitle: "Correlating with GitHub commits in last 48h",
+  },
+  {
+    key: "hypothesis_agent",
+    label: "Generating hypotheses",
+    subtitle: "Claude reasoning over evidence to rank causes",
+  },
+  {
+    key: "report_writer",
+    label: "Writing report",
+    subtitle: "Producing the full incident report",
+  },
 ];
 
-function StatusIcon({ status }) {
-  if (status === "running") return <span className="status-icon spinning" aria-label="Running" />;
-  if (status === "complete") return <span className="status-icon check" aria-label="Complete">✓</span>;
-  if (status === "warning") return <span className="status-icon warning" aria-label="Warning">▲</span>;
-  if (status === "error") return <span className="status-icon error" aria-label="Error">×</span>;
-  return <span className="status-icon pending" aria-label="Pending" />;
+function StepIcon({ status }) {
+  if (status === "running") {
+    return (
+      <div className="step-icon icon-running">
+        <div className="spinner" />
+      </div>
+    );
+  }
+  if (status === "complete") {
+    return (
+      <div className="step-icon icon-complete">
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <circle cx="10" cy="10" r="9" fill="currentColor" />
+          <path d="M6 10l3 3 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </div>
+    );
+  }
+  if (status === "warning") {
+    return (
+      <div className="step-icon icon-warning" aria-label="Warning">
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <circle cx="10" cy="10" r="9" fill="currentColor" />
+          <path d="M10 5v6M10 14v1" stroke="white" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </div>
+    );
+  }
+  if (status === "error") {
+    return (
+      <div className="step-icon icon-error" aria-label="Error">
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <circle cx="10" cy="10" r="9" fill="currentColor" />
+          <path d="M7 7l6 6m0-6-6 6" stroke="white" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </div>
+    );
+  }
+  return <div className="step-icon icon-pending" />;
 }
 
-export default function AgentTimeline({ timelineEvents }) {
+export default function AgentTimeline({ timelineEvents = [], steps }) {
+  const eventMap = timelineEvents.reduce((map, event) => {
+    map[event.node] = event;
+    return map;
+  }, {});
+
+  const renderedSteps = (steps || STEP_DEFINITIONS).map((step) => {
+    const key = step.key || step.node;
+    const event = eventMap[key];
+    return {
+      ...step,
+      key,
+      status: event?.status || step.status || "pending",
+      summary: event?.summary || step.summary || "",
+    };
+  });
+
   return (
-    <section className="timeline-panel">
-      <h2>Live Agent Timeline</h2>
-      <ol className="timeline">
-        {timelineSteps.map((step) => {
-          const events = timelineEvents.filter((event) => event.node === step.node);
-          const latest = events.at(-1);
-          const status = latest?.status || "pending";
-          return (
-            <li key={step.node} className={`timeline-step ${status}`}>
-              <StatusIcon status={status} />
-              <div>
-                <strong>{step.label}</strong>
-                {latest?.summary && status !== "running" && (
-                  <p>{latest.summary}</p>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+    <section className="timeline-card">
+      <h3>Investigating incident...</h3>
+      <p>AI agents working in sequence — results appear as each step completes</p>
+      {renderedSteps.map((step, index) => (
+        <div
+          className={`step-row step-${step.status}`}
+          key={step.key}
+        >
+          <div className="step-icon-col">
+            <StepIcon status={step.status} />
+            {index < renderedSteps.length - 1 && (
+              <div
+                className={`connector${step.status === "running" ? " connector-active" : ""}`}
+              />
+            )}
+          </div>
+          <div className="step-content">
+            <h4>{step.label}</h4>
+            <p>{step.subtitle}</p>
+            {step.summary && step.status !== "running" && (
+              <span className="step-badge">{step.summary}</span>
+            )}
+          </div>
+        </div>
+      ))}
+      <p className="timeline-footer">
+        Usually takes 30–90 seconds depending on GitHub correlation.
+      </p>
     </section>
   );
 }

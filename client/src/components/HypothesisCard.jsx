@@ -30,7 +30,7 @@ export default function HypothesisCard({ hypothesis, sessionId }) {
     <article className={`hypothesis-card rank-${hypothesis.rank}`}>
       <div className="hypothesis-heading">
         <span className="rank">#{hypothesis.rank}</span>
-        <span>{confidence}% confidence</span>
+        <span className="confidence-label">{confidence}% confidence</span>
       </div>
       <div className="confidence-bar" aria-label={`${confidence}% confidence`}>
         <span style={{ width: `${confidence}%` }} />
@@ -46,7 +46,7 @@ export default function HypothesisCard({ hypothesis, sessionId }) {
       <div className="feedback-buttons">
         <button
           type="button"
-          className={rating === "up" ? "selected" : ""}
+          className={`thumb-btn thumb-up ${rating === "up" ? "selected" : ""}`}
           onClick={() => submitFeedback("up")}
           aria-label="Thumbs up"
         >
@@ -54,7 +54,7 @@ export default function HypothesisCard({ hypothesis, sessionId }) {
         </button>
         <button
           type="button"
-          className={rating === "down" ? "selected" : ""}
+          className={`thumb-btn thumb-down ${rating === "down" ? "selected" : ""}`}
           onClick={() => submitFeedback("down")}
           aria-label="Thumbs down"
         >

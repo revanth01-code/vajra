@@ -1,164 +1,154 @@
-import json
-from xml.etree import ElementTree
+import xml.etree.ElementTree as ET
+from typing import Any
 
-import anthropic
-
-from src.config.anthropic_client import get_anthropic_client
+from src.config.anthropic_client import get_client
 
 
-MODEL_NAME = "claude-sonnet-4-6"
+MODEL = "openai/gpt-oss-120b"
+
+HYPOTHESIS_SYSTEM = """You are a senior SRE with 10 years of production debugging experience.
+Analyze the incident and return EXACTLY this XML structure with exactly 3 hypotheses.
+Return raw XML only, no markdown, no explanation, nothing else before or after the XML.
+
+<hypotheses>
+<hypothesis rank="1" confidence="0.91">
+<cause>specific root cause here</cause>
+<evidence>specific evidence from the data provided</evidence>
+<fix>specific actionable fix</fix>
+</hypothesis>
+<hypothesis rank="2" confidence="0.61">
+<cause>second most likely cause</cause>
+<evidence>evidence for this hypothesis</evidence>
+<fix>fix for this hypothesis</fix>
+</hypothesis>
+<hypothesis rank="3" confidence="0.28">
+<cause>third possibility</cause>
+<evidence>evidence for third hypothesis</evidence>
+<fix>fix for third hypothesis</fix>
+</hypothesis>
+</hypotheses>"""
+
+REPORT_SYSTEM = """You are a senior SRE writing a production incident report.
+Write a clear markdown report. Use these exact section headers:
+# Incident Report — [service name]
+## Timeline
+## Root Cause
+## Impact
+## Immediate Fix
+## Permanent Fix
+Return only the markdown, nothing else."""
 
 
-def _response_text(response: object) -> str:
-    content = getattr(response, "content", [])
-    for block in content:
-        text = getattr(block, "text", None)
-        if text:
-            return text.strip()
-    raise ValueError("Claude returned an empty response.")
+def _call_groq(system_prompt: str, user_prompt: str, max_tokens: int = 1000) -> str:
+    response = get_client().chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_tokens=max_tokens,
+        temperature=0.3,
+    )
+    return response.choices[0].message.content
 
 
-def _fallback_hypotheses() -> list[dict[str, object]]:
+def _fallback_hypotheses() -> list[dict[str, Any]]:
     return [
         {
             "rank": 1,
             "confidence": 0.0,
-            "cause": "Investigation failed - Claude API unavailable",
-            "evidence": "No Claude-generated evidence is available.",
-            "fix": "Retry the investigation when the Claude API is available.",
+            "cause": "Investigation failed - Groq API unavailable",
+            "evidence": "No AI-generated evidence is available.",
+            "fix": "Retry the investigation when the Groq API is available.",
         }
     ]
 
 
-def _hypothesis_prompt(
-    parsed_error: dict[str, object],
-    retrieved_incidents: list[dict[str, object]],
-    recent_commits: list[dict[str, object]],
-) -> str:
-    context = {
-        "parsed_error": parsed_error,
-        "retrieved_incidents": retrieved_incidents,
-        "recent_commits": recent_commits,
-    }
-    return (
-        "Analyze this production incident as a senior SRE with 10 years of "
-        "production debugging experience.\n"
-        "Return exactly three root-cause hypotheses ranked 1 through 3. "
-        "Use confidence values from 0 to 1 that reflect the evidence. "
-        "Do not claim certainty beyond the supplied evidence.\n"
-        "Return only this XML shape, with no Markdown or surrounding prose:\n"
-        "<hypotheses><hypothesis><rank>1</rank><confidence>0.0</confidence>"
-        "<cause>...</cause><evidence>...</evidence><fix>...</fix>"
-        "</hypothesis></hypotheses>\n\n"
-        f"Structured incident context:\n{json.dumps(context, indent=2, default=str)}"
-    )
+def _fallback_report() -> str:
+    return "Groq API unavailable; report generation was not completed."
 
 
-def _parse_hypotheses(xml_text: str) -> list[dict[str, object]]:
-    start = xml_text.find("<hypotheses")
-    end = xml_text.rfind("</hypotheses>")
-    if start < 0 or end < 0:
-        raise ValueError("Claude response did not contain hypotheses XML.")
-    root = ElementTree.fromstring(xml_text[start : end + len("</hypotheses>")])
-    hypotheses: list[dict[str, object]] = []
+def generate_hypotheses(state: dict[str, Any]) -> list[dict[str, Any]]:
+    parsed = state.get("parsed_error", {})
+    incidents = state.get("retrieved_incidents", [])
+    commits = state.get("recent_commits", [])
 
-    for element in root.findall("hypothesis"):
-        rank_text = element.findtext("rank") or element.get("rank")
-        confidence_text = element.findtext("confidence") or element.get("confidence")
-        cause = (element.findtext("cause") or "").strip()
-        evidence = (element.findtext("evidence") or "").strip()
-        fix = (element.findtext("fix") or "").strip()
-        if not rank_text or not confidence_text or not cause or not evidence or not fix:
-            raise ValueError("Claude returned an incomplete hypothesis.")
-        rank = int(rank_text)
-        confidence = float(confidence_text)
-        if rank not in {1, 2, 3} or not 0 <= confidence <= 1:
-            raise ValueError("Claude returned an invalid hypothesis rank or confidence.")
-        hypotheses.append(
-            {
-                "rank": rank,
-                "confidence": confidence,
-                "cause": cause,
-                "evidence": evidence,
-                "fix": fix,
-            }
-        )
+    incidents_text = "\n".join(
+        f'- [{i["service_type"]}] Cause: {i["root_cause"]} | Fix: {i["fix_applied"]}'
+        for i in incidents
+    ) or "No similar incidents found."
 
-    if len(hypotheses) != 3 or {item["rank"] for item in hypotheses} != {1, 2, 3}:
-        raise ValueError("Claude must return exactly three ranked hypotheses.")
-    return sorted(hypotheses, key=lambda item: int(item["rank"]))
+    commits_text = "\n".join(
+        f'- {"[SUSPICIOUS] " if c.get("suspicious") else ""}{c["sha"][:7]} {c["message"]}'
+        for c in commits
+    ) or "No recent commits provided."
 
+    user_prompt = f"""INCIDENT:
+Service: {parsed.get("service", "unknown")}
+Error Type: {parsed.get("error_type", "unknown")}
+Message: {parsed.get("error_message", "unknown")}
+File Paths: {", ".join(parsed.get("file_paths", []))}
+Timestamp: {parsed.get("timestamp", "unknown")}
 
-def generate_hypotheses(
-    parsed_error: dict[str, object],
-    retrieved_incidents: list[dict[str, object]],
-    recent_commits: list[dict[str, object]],
-) -> list[dict[str, object]]:
-    client = get_anthropic_client()
-    if client is None:
-        return _fallback_hypotheses()
+SIMILAR PAST INCIDENTS:
+{incidents_text}
+
+RECENT GIT COMMITS:
+{commits_text}
+
+Return the XML hypotheses now."""
 
     try:
-        response = client.messages.create(
-            model=MODEL_NAME,
-            max_tokens=700,
-            system="You produce strictly valid XML for incident root-cause analysis.",
-            messages=[{"role": "user", "content": _hypothesis_prompt(
-                parsed_error, retrieved_incidents, recent_commits
-            )}],
-        )
-        return _parse_hypotheses(_response_text(response))
-    except (anthropic.APIError, ElementTree.ParseError, TypeError, ValueError):
+        raw = _call_groq(HYPOTHESIS_SYSTEM, user_prompt, max_tokens=1200)
+        start = raw.find("<hypotheses>")
+        end = raw.find("</hypotheses>") + len("</hypotheses>")
+        if start == -1 or end < len("</hypotheses>"):
+            return _fallback_hypotheses()
+        root = ET.fromstring(raw[start:end])
+        results = []
+        for h in root.findall("hypothesis"):
+            try:
+                confidence = float(h.get("confidence", "0"))
+                confidence = max(0.0, min(1.0, confidence))
+            except ValueError:
+                confidence = 0.0
+            results.append(
+                {
+                    "rank": int(h.get("rank", len(results) + 1)),
+                    "confidence": confidence,
+                    "cause": (h.findtext("cause") or "").strip(),
+                    "evidence": (h.findtext("evidence") or "").strip(),
+                    "fix": (h.findtext("fix") or "").strip(),
+                }
+            )
+        return results if results else _fallback_hypotheses()
+    except Exception:
         return _fallback_hypotheses()
 
 
-def _report_prompt(
-    parsed_error: dict[str, object],
-    top_hypothesis: dict[str, object],
-    hypotheses: list[dict[str, object]],
-) -> str:
-    return (
-        "Write a concise production incident report in Markdown. Include a title, "
-        "timeline summary, the evidence-based top root cause, estimated impact, "
-        "immediate remediation, and permanent fix recommendation. Do not invent "
-        "facts that are absent from the context.\n\n"
-        f"Parsed error:\n{json.dumps(parsed_error, indent=2, default=str)}\n\n"
-        f"Top hypothesis:\n{json.dumps(top_hypothesis, indent=2, default=str)}\n\n"
-        f"All hypotheses:\n{json.dumps(hypotheses, indent=2, default=str)}"
-    )
+def generate_report(state: dict[str, Any]) -> str:
+    parsed = state.get("parsed_error", {})
+    hypotheses = state.get("hypotheses", [])
+    top = hypotheses[0] if hypotheses else {}
 
+    user_prompt = f"""Write an incident report for this production incident.
 
-def _fallback_report(top_hypothesis: dict[str, object]) -> str:
-    cause = top_hypothesis.get("cause", "No root cause available.")
-    fix = top_hypothesis.get("fix", "Retry after the Claude API becomes available.")
-    return (
-        "# Incident Investigation\n\n"
-        "## Root cause\n"
-        f"{cause}\n\n"
-        "## Immediate remediation\n"
-        f"{fix}\n\n"
-        "> Claude API unavailable; report generation was not completed."
-    )
+Service: {parsed.get("service", "unknown")}
+Error: {parsed.get("error_type", "unknown")} — {parsed.get("error_message", "")}
+Timestamp: {parsed.get("timestamp", "unknown")}
 
+Top Root Cause ({int(top.get("confidence", 0) * 100)}% confidence):
+{top.get("cause", "Unknown")}
 
-def generate_report(
-    parsed_error: dict[str, object],
-    top_hypothesis: dict[str, object],
-    hypotheses: list[dict[str, object]],
-) -> str:
-    client = get_anthropic_client()
-    if client is None:
-        return _fallback_report(top_hypothesis)
+Evidence:
+{top.get("evidence", "None")}
+
+Recommended Fix:
+{top.get("fix", "None")}
+
+Write the full markdown incident report now."""
 
     try:
-        response = client.messages.create(
-            model=MODEL_NAME,
-            max_tokens=700,
-            system="You write factual Markdown production incident reports.",
-            messages=[{"role": "user", "content": _report_prompt(
-                parsed_error, top_hypothesis, hypotheses
-            )}],
-        )
-        return _response_text(response)
-    except (anthropic.APIError, TypeError, ValueError):
-        return _fallback_report(top_hypothesis)
+        return _call_groq(REPORT_SYSTEM, user_prompt, max_tokens=800)
+    except Exception:
+        return _fallback_report()

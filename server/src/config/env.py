@@ -11,7 +11,7 @@ load_dotenv(SERVER_ROOT / ".env")
 
 @dataclass(frozen=True)
 class Settings:
-    anthropic_api_key: str | None
+    groq_api_key: str | None
     allowed_origin: str
     chroma_persist_path: str
     sqlite_db_path: str
@@ -20,7 +20,7 @@ class Settings:
 
 def load_settings() -> Settings:
     return Settings(
-        anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
+        groq_api_key=os.environ.get("GROQ_API_KEY") or None,
         allowed_origin=os.environ.get("ALLOWED_ORIGIN", "http://localhost:5173"),
         chroma_persist_path=os.environ.get("CHROMA_PERSIST_PATH", "./chroma_db"),
         sqlite_db_path=os.environ.get("SQLITE_DB_PATH", "./incidentsense.db"),

@@ -1,13 +1,11 @@
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.agents.pipeline import build_pipeline
 from src.services.anthropic_service import (
-    _parse_hypotheses,
     generate_hypotheses,
     generate_report,
 )
@@ -15,20 +13,17 @@ from src.services.anthropic_service import (
 
 HYPOTHESIS_XML = """
 <hypotheses>
-  <hypothesis>
-    <rank>1</rank><confidence>0.82</confidence>
+  <hypothesis rank="1" confidence="0.82">
     <cause>Connection pool exhaustion</cause>
     <evidence>Database timeout and pool wait metrics align.</evidence>
     <fix>Increase pool capacity after reducing connection hold time.</fix>
   </hypothesis>
-  <hypothesis>
-    <rank>2</rank><confidence>0.55</confidence>
+  <hypothesis rank="2" confidence="0.55">
     <cause>Slow database query</cause>
     <evidence>The error occurs during a database request.</evidence>
     <fix>Inspect and optimize the slow query.</fix>
   </hypothesis>
-  <hypothesis>
-    <rank>3</rank><confidence>0.21</confidence>
+  <hypothesis rank="3" confidence="0.21">
     <cause>Recent deployment regression</cause>
     <evidence>A deployment occurred before the incident.</evidence>
     <fix>Compare the release with the previous version.</fix>
@@ -37,36 +32,33 @@ HYPOTHESIS_XML = """
 """
 
 
-def _response(text: str) -> SimpleNamespace:
-    return SimpleNamespace(content=[SimpleNamespace(text=text)])
-
-
-def test_hypothesis_xml_parser_requires_three_ranked_items():
-    hypotheses = _parse_hypotheses(HYPOTHESIS_XML)
+def test_hypothesis_api_response_is_parsed():
+    state = {
+        "parsed_error": {},
+        "retrieved_incidents": [],
+        "recent_commits": [],
+    }
+    with patch("src.services.anthropic_service._call_groq", return_value=HYPOTHESIS_XML):
+        hypotheses = generate_hypotheses(state)
 
     assert len(hypotheses) == 3
     assert hypotheses[0]["rank"] == 1
     assert hypotheses[0]["confidence"] == 0.82
-
-
-def test_hypothesis_api_response_is_parsed():
-    client = SimpleNamespace(
-        messages=SimpleNamespace(create=lambda **_: _response(HYPOTHESIS_XML))
-    )
-    with patch("src.services.anthropic_service.get_anthropic_client", return_value=client):
-        hypotheses = generate_hypotheses({}, [], [])
-
     assert hypotheses[1]["cause"] == "Slow database query"
 
 
 def test_api_failure_returns_fallbacks():
-    with patch("src.services.anthropic_service.get_anthropic_client", return_value=None):
-        hypotheses = generate_hypotheses({}, [], [])
-        report = generate_report({}, hypotheses[0], hypotheses)
+    state = {"parsed_error": {}, "retrieved_incidents": [], "recent_commits": []}
+    with patch(
+        "src.services.anthropic_service._call_groq",
+        side_effect=RuntimeError("missing key"),
+    ):
+        hypotheses = generate_hypotheses(state)
+        report = generate_report({"parsed_error": {}, "hypotheses": hypotheses})
 
     assert len(hypotheses) == 1
     assert hypotheses[0]["confidence"] == 0.0
-    assert "Claude API unavailable" in report
+    assert "Groq API unavailable" in report
 
 
 def test_full_pipeline_passes_state_through_five_nodes():
